@@ -18,8 +18,8 @@ app.add_middleware(
 
 class TextRequest(BaseModel):
     text: str
-    width: int = 800
-    height: int = 400
+    width: int = 400
+    height: int = 200
     font_size: int = 32
     text_color: str = "#000000"
     background_color: str = "#FFFFFF"
@@ -31,8 +31,8 @@ async def root():
 @app.get("/render")
 async def render_text(
     text: str = Query(..., description="Texto a ser renderizado"),
-    width: int = Query(800, description="Largura da imagem"),
-    height: int = Query(400, description="Altura da imagem"),
+    width: int = Query(400, description="Largura da imagem"),
+    height: int = Query(200, description="Altura da imagem"),
     font_size: int = Query(32, description="Tamanho da fonte"),
     text_color: str = Query("#000000", description="Cor do texto"),
     background_color: str = Query("#FFFFFF", description="Cor de fundo"),
@@ -51,13 +51,9 @@ async def render_text(
             # Usar fonte padrão se não encontrar a fonte personalizada
             font_obj = ImageFont.load_default()
         
-        # Calcular posição para centralizar o texto
-        bbox = draw.textbbox((0, 0), text, font=font_obj)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-        
-        x = (width - text_width) // 2
-        y = (height - text_height) // 2
+        # Posicionar texto no canto superior esquerdo sem margem
+        x = 0
+        y = 0
         
         # Desenhar o texto
         draw.text((x, y), text, fill=text_color, font=font_obj)
