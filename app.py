@@ -39,8 +39,11 @@ async def render_text(
     font: str = Query("DejaVuSans.ttf", description="Nome do arquivo da fonte")
 ):
     try:
-        # Criar uma nova imagem
-        img = Image.new('RGB', (width, height), background_color)
+        # Verificar se o fundo deve ser transparente
+        if background_color.lower() == 'transparent' or background_color.lower() == '#00000000':
+            img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+        else:
+            img = Image.new('RGB', (width, height), background_color)
         draw = ImageDraw.Draw(img)
         
         # Tentar carregar a fonte
