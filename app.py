@@ -46,6 +46,7 @@ class TextRequest(BaseModel):
 
 class GenerateTeamBackgroundsRequest(BaseModel):
     team_name: str
+    count: int = 5
     size: str = "1024x1024"
     quality: str = "medium"
 
@@ -176,7 +177,7 @@ async def render_text(
 @app.post("/generate-team-backgrounds")
 async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
     """
-    Gera 5 imagens de fundo personalizadas para um time usando IA e retorna URLs do Supabase.
+    Gera imagens de fundo personalizadas para um time usando IA e retorna URLs do Supabase.
     """
     
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -184,15 +185,15 @@ async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
             # Encontra o escudo do time
             team_logo_path = find_image_by_name(request.team_name)
             
-            # Pega 5 imagens aleatórias da pasta bgs
+            # Pega N imagens aleatórias da pasta bgs
             if not BGS_DIR.exists():
                 raise HTTPException(status_code=404, detail="Pasta de backgrounds não encontrada")
             
             bg_files = [f for f in BGS_DIR.iterdir() if f.is_file() and f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp']]
-            if len(bg_files) < 5:
-                raise HTTPException(status_code=404, detail="Não há backgrounds suficientes na pasta bgs")
+            if len(bg_files) < request.count:
+                raise HTTPException(status_code=404, detail=f"Não há backgrounds suficientes na pasta bgs (disponíveis: {len(bg_files)}, solicitados: {request.count})")
             
-            selected_bgs = random.sample(bg_files, 5)
+            selected_bgs = random.sample(bg_files, request.count)
             
             # Inicializar cliente OpenAI
             client = OpenAI(

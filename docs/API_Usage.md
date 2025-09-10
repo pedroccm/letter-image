@@ -49,12 +49,13 @@ GET /render?text=Hello%20World&width=500&height=100&font_size=24&text_color=%23F
 ### 3. Geração de Backgrounds para Times
 **POST** `/generate-team-backgrounds`
 
-Gera 5 backgrounds personalizados para um time usando IA, combinando o escudo do time com backgrounds aleatórios.
+Gera backgrounds personalizados para um time usando IA, combinando o escudo do time com backgrounds aleatórios.
 
 **Body (JSON):**
 ```json
 {
   "team_name": "flamengo",
+  "count": 3,
   "size": "1024x1536",
   "quality": "medium"
 }
@@ -62,6 +63,7 @@ Gera 5 backgrounds personalizados para um time usando IA, combinando o escudo do
 
 **Parâmetros:**
 - `team_name` (obrigatório): Nome do time (deve existir em `/stored_images/`)
+- `count` (opcional): Número de backgrounds a gerar (padrão: 5, máximo: quantidade disponível em `/bgs/`)
 - `size` (opcional): Tamanho da imagem (padrão: "1024x1024")
 - `quality` (opcional): Qualidade da imagem (padrão: "medium")
 
@@ -90,13 +92,14 @@ const response = await fetch('https://letter-image.onrender.com/generate-team-ba
   },
   body: JSON.stringify({
     team_name: 'flamengo',
+    count: 3,
     size: '1024x1536',
     quality: 'medium'
   })
 });
 
 const result = await response.json();
-console.log(result.urls); // Array com 5 URLs das imagens geradas
+console.log(result.urls); // Array com as URLs das imagens geradas
 ```
 
 **Exemplo de Uso (Python):**
@@ -105,6 +108,7 @@ import requests
 
 data = {
     "team_name": "flamengo",
+    "count": 3,
     "size": "1024x1536", 
     "quality": "medium"
 }
@@ -115,7 +119,7 @@ response = requests.post(
 )
 
 result = response.json()
-print(result["urls"])  # Lista com 5 URLs das imagens geradas
+print(result["urls"])  # Lista com as URLs das imagens geradas
 ```
 
 ---
@@ -142,7 +146,7 @@ Lista todos os escudos de times disponíveis para geração de backgrounds.
 
 ## Como Funciona a Geração de Backgrounds
 
-1. **Seleção Aleatória**: A API seleciona 5 backgrounds aleatórios da pasta `/bgs/`
+1. **Seleção Aleatória**: A API seleciona N backgrounds aleatórios da pasta `/bgs/` (onde N = parâmetro `count`)
 2. **IA Generativa**: Para cada background, usa OpenAI GPT-Image para combinar:
    - O background original
    - O escudo do time
@@ -158,7 +162,7 @@ Lista todos os escudos de times disponíveis para geração de backgrounds.
 ## Limitações
 
 - Apenas times com escudos na pasta `/stored_images/`
-- Mínimo de 5 backgrounds na pasta `/bgs/`
+- Quantidade de backgrounds na pasta `/bgs/` deve ser >= parâmetro `count`
 - Processamento pode demorar 1-3 minutos dependendo da IA
 - URLs das imagens são permanentes (Supabase Storage)
 
