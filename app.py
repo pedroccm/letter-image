@@ -198,6 +198,24 @@ async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
                 try:
                     # Extrair nome original do background (ex: bg1, bg15, bg23)
                     bg_original_name = bg_path.stem  # Nome sem extensão
+                    supabase_path = f"{request.team_name}/{bg_original_name}.png"
+                    
+                    # Verificar se a imagem já existe no Supabase
+                    try:
+                        # Tentar obter URL pública - se não der erro, arquivo existe
+                        public_url = supabase.storage.from_("fotos").get_public_url(supabase_path)
+                        
+                        # Verificar se realmente existe fazendo uma requisição HEAD
+                        test_response = requests.head(public_url)
+                        if test_response.status_code == 200:
+                            urls.append(public_url)
+                            print(f"⚡ {bg_original_name} já existe, reutilizando: {public_url}")
+                            continue
+                    except:
+                        pass  # Arquivo não existe, continuar com geração
+                    
+                    # Gerar nova imagem se não existir
+                    print(f"🔄 Processando {bg_original_name}...")
                     
                     # Abre as imagens para a API (fundo + escudo)
                     with open(bg_path, "rb") as bg_file, open(team_logo_path, "rb") as logo_file:
@@ -230,12 +248,11 @@ async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
                         else:
                             raise HTTPException(status_code=500, detail="Resposta inesperada da API")
                         
-                        # Upload para Supabase com estrutura de pastas: team_name/bg_name.png
-                        supabase_path = f"{request.team_name}/{bg_original_name}.png"
+                        # Upload para Supabase
                         public_url = upload_image_to_supabase(output_path, supabase_path)
                         
                         urls.append(public_url)
-                        print(f"✅ {bg_original_name} processado: {public_url}")
+                        print(f"✅ {bg_original_name} gerado: {public_url}")
                         
                 except Exception as e:
                     print(f"❌ Erro ao processar background {bg_path.name}: {str(e)}")
