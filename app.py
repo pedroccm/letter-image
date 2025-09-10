@@ -131,6 +131,17 @@ def find_image_by_name(image_name: str) -> pathlib.Path:
 async def root():
     return {"message": "Text to Image API"}
 
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "online",
+        "server": "running",
+        "timestamp": int(time.time()),
+        "images_dir_exists": IMAGES_DIR.exists(),
+        "bgs_dir_exists": BGS_DIR.exists(),
+        "api_key_configured": bool(API_KEY)
+    }
+
 @app.get("/render")
 async def render_text(
     text: str = Query(..., description="Texto a ser renderizado"),
