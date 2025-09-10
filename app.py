@@ -227,40 +227,70 @@ async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
                     # Gerar nova imagem se não existir
                     print(f"🔄 Processando {bg_original_name}...")
                     
-                    # Abre as imagens para a API (fundo + escudo)
-                    with open(bg_path, "rb") as bg_file, open(team_logo_path, "rb") as logo_file:
-                        images = [bg_file, logo_file]
-                        
-                        prompt = f"faça uma versão desse fundo com as cores do escudo do {request.team_name} coloque o escudo por cima mesclado com 50% de opacidade"
-                        
-                        result = client.images.edit(
-                            model="openai/gpt-image-1",
-                            image=images,
-                            prompt=prompt,
-                            size=request.size,
-                            response_format="url"
-                        )
-                        
-                        choice = result.data[0]
-                        
-                        # Salva a imagem temporariamente
-                        output_filename = f"{bg_original_name}.png"
-                        output_path = os.path.join(temp_dir, output_filename)
-                        
-                        if getattr(choice, "url", None):
-                            save_from_url(choice.url, pathlib.Path(output_path))
-                        elif getattr(choice, "b64_json", None):
-                            img_bytes = base64.b64decode(choice.b64_json)
-                            with open(output_path, "wb") as f:
-                                f.write(img_bytes)
-                        else:
-                            raise HTTPException(status_code=500, detail="Resposta inesperada da API")
-                        
-                        # Upload para Supabase
-                        public_url = upload_image_to_supabase(output_path, supabase_path)
-                        
-                        urls.append(public_url)
-                        print(f"✅ {bg_original_name} gerado: {public_url}")
+                    # Fazer chamada direta à API AIML usando requests
+                    prompt = f"faça uma versão desse fundo com as cores do escudo do {request.team_name} coloque o escudo por cima mesclado com 50% de opacidade"
+                    
+                    # Preparar arquivos para upload
+                    files = {
+                        'image': [
+                            ('bg.png', open(bg_path, 'rb'), 'image/png'),
+                            ('logo.png', open(team_logo_path, 'rb'), 'image/png')
+                        ]
+                    }
+                    
+                    data = {
+                        'model': 'openai/gpt-image-1',
+                        'prompt': prompt,
+                        'size': request.size,
+                        'output_format': 'png',
+                        'quality': request.quality,
+                        'background': 'auto',
+                        'response_format': 'url'
+                    }
+                    
+                    headers = {
+                        'Authorization': f'Bearer {API_KEY}'
+                    }
+                    
+                    # Fazer requisição direta
+                    api_response = requests.post(
+                        'https://api.aimlapi.com/v1/images/edits',
+                        headers=headers,
+                        data=data,
+                        files=files,
+                        timeout=120
+                    )
+                    
+                    if api_response.status_code != 201:
+                        raise Exception(f"API Error {api_response.status_code}: {api_response.text}")
+                    
+                    result = api_response.json()
+                    
+                    # Fechar arquivos
+                    for file_tuple in files['image']:
+                        file_tuple[1].close()
+                    
+                    # Extrair URL da resposta
+                    choice = result['data'][0]
+                    
+                    # Salva a imagem temporariamente
+                    output_filename = f"{bg_original_name}.png"
+                    output_path = os.path.join(temp_dir, output_filename)
+                    
+                    if 'url' in choice:
+                        save_from_url(choice['url'], pathlib.Path(output_path))
+                    elif 'b64_json' in choice:
+                        img_bytes = base64.b64decode(choice['b64_json'])
+                        with open(output_path, "wb") as f:
+                            f.write(img_bytes)
+                    else:
+                        raise HTTPException(status_code=500, detail="Resposta inesperada da API")
+                    
+                    # Upload para Supabase
+                    public_url = upload_image_to_supabase(output_path, supabase_path)
+                    
+                    urls.append(public_url)
+                    print(f"✅ {bg_original_name} gerado: {public_url}")
                         
                 except Exception as e:
                     print(f"❌ Erro detalhado ao processar {bg_path.name}: {type(e).__name__}: {str(e)}")
