@@ -9,6 +9,8 @@ import os
 import pathlib
 import requests
 import tempfile
+import random
+import zipfile
 from openai import OpenAI
 
 app = FastAPI(title="Text to Image API", description="API para converter texto em imagem")
@@ -22,6 +24,7 @@ app.add_middleware(
 
 # Configuração para combinação de imagens
 IMAGES_DIR = pathlib.Path("stored_images")
+BGS_DIR = pathlib.Path("bgs")
 API_KEY = os.getenv("AIML_API_KEY", "a2c4457ed6a14299a425dd670e5a8ad0")
 
 class TextRequest(BaseModel):
@@ -32,11 +35,9 @@ class TextRequest(BaseModel):
     text_color: str = "#000000"
     background_color: str = "#FFFFFF"
 
-class CombineImagesRequest(BaseModel):
-    image1_name: str
-    image2_name: str
-    prompt: str
-    size: str = "1024x1536"
+class GenerateTeamBackgroundsRequest(BaseModel):
+    team_name: str
+    size: str = "1024x1024"
     quality: str = "medium"
 
 def save_from_url(url: str, out_path: pathlib.Path):
@@ -116,61 +117,89 @@ async def render_text(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao gerar imagem: {str(e)}")
 
-@app.post("/combine-images")
-async def combine_images(request: CombineImagesRequest):
+@app.post("/generate-team-backgrounds")
+async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
     """
-    Combina duas imagens armazenadas no servidor usando AI baseado no prompt fornecido.
+    Gera 5 imagens de fundo personalizadas para um time usando IA.
     """
     
     with tempfile.TemporaryDirectory() as temp_dir:
         try:
-            # Encontra as imagens (com ou sem extensão)
-            image1_path = find_image_by_name(request.image1_name)
-            image2_path = find_image_by_name(request.image2_name)
+            # Encontra o escudo do time
+            team_logo_path = find_image_by_name(request.team_name)
             
-            # Abre as imagens para a API
-            images = [open(image1_path, "rb"), open(image2_path, "rb")]
+            # Pega 5 imagens aleatórias da pasta bgs
+            if not BGS_DIR.exists():
+                raise HTTPException(status_code=404, detail="Pasta de backgrounds não encontrada")
             
-            try:
-                # Inicializar cliente apenas quando necessário
-                client = OpenAI(
-                    api_key=API_KEY,
-                    base_url="https://api.aimlapi.com/v1",
-                )
-                
-                result = client.images.edit(
-                    model="openai/gpt-image-1",
-                    image=images,
-                    prompt=request.prompt,
-                    size=request.size,
-                    output_format="png",
-                    quality=request.quality,
-                    background="auto",
-                )
-                
-                choice = result.data[0]
-                
-                # Salva a imagem resultante
-                output_path = os.path.join(temp_dir, "result.png")
-                
-                if getattr(choice, "url", None):
-                    save_from_url(choice.url, pathlib.Path(output_path))
-                elif getattr(choice, "b64_json", None):
-                    img_bytes = base64.b64decode(choice.b64_json)
-                    with open(output_path, "wb") as f:
-                        f.write(img_bytes)
-                else:
-                    raise HTTPException(status_code=500, detail="Resposta inesperada da API")
-                
-                return FileResponse(
-                    output_path,
-                    media_type="image/png",
-                    filename="combined_image.png"
-                )
-                
-            finally:
-                for f in images:
-                    f.close()
+            bg_files = [f for f in BGS_DIR.iterdir() if f.is_file() and f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp']]
+            if len(bg_files) < 5:
+                raise HTTPException(status_code=404, detail="Não há backgrounds suficientes na pasta bgs")
+            
+            selected_bgs = random.sample(bg_files, 5)
+            
+            # Inicializar cliente OpenAI
+            client = OpenAI(
+                api_key=API_KEY,
+                base_url="https://api.aimlapi.com/v1",
+            )
+            
+            generated_files = []
+            
+            for i, bg_path in enumerate(selected_bgs):
+                try:
+                    # Abre as imagens para a API (fundo + escudo)
+                    with open(bg_path, "rb") as bg_file, open(team_logo_path, "rb") as logo_file:
+                        images = [bg_file, logo_file]
+                        
+                        prompt = f"faça uma versão desse fundo com as cores do escudo do {request.team_name} coloque o escudo por cima mesclado com 50% de opacidade"
+                        
+                        result = client.images.edit(
+                            model="openai/gpt-image-1",
+                            image=images,
+                            prompt=prompt,
+                            size=request.size,
+                            output_format="png",
+                            quality=request.quality,
+                            background="auto",
+                        )
+                        
+                        choice = result.data[0]
+                        
+                        # Salva a imagem resultante
+                        output_filename = f"{request.team_name}_bg_{i+1}.png"
+                        output_path = os.path.join(temp_dir, output_filename)
+                        
+                        if getattr(choice, "url", None):
+                            save_from_url(choice.url, pathlib.Path(output_path))
+                        elif getattr(choice, "b64_json", None):
+                            img_bytes = base64.b64decode(choice.b64_json)
+                            with open(output_path, "wb") as f:
+                                f.write(img_bytes)
+                        else:
+                            raise HTTPException(status_code=500, detail="Resposta inesperada da API")
+                        
+                        generated_files.append(output_path)
+                        
+                except Exception as e:
+                    print(f"Erro ao processar background {i+1}: {str(e)}")
+                    continue
+            
+            if not generated_files:
+                raise HTTPException(status_code=500, detail="Nenhuma imagem foi gerada com sucesso")
+            
+            # Criar ZIP com todas as imagens
+            zip_path = os.path.join(temp_dir, f"{request.team_name}_backgrounds.zip")
+            with zipfile.ZipFile(zip_path, 'w') as zip_file:
+                for file_path in generated_files:
+                    if os.path.exists(file_path):
+                        zip_file.write(file_path, os.path.basename(file_path))
+            
+            return FileResponse(
+                zip_path,
+                media_type="application/zip",
+                filename=f"{request.team_name}_backgrounds.zip"
+            )
                     
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Erro ao processar imagens: {str(e)}")
