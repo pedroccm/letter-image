@@ -84,7 +84,7 @@ def upload_image_to_supabase(image_path: str, file_name: str) -> str:
             file=file_data,
             file_options={
                 "content-type": "image/png",
-                "upsert": True  # Sobrescrever se já existir
+                "upsert": "true"  # Sobrescrever se já existir
             }
         )
         
