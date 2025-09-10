@@ -70,9 +70,13 @@ def upload_image_to_supabase(image_path: str, file_name: str) -> str:
         URL pública da imagem
     """
     try:
+        print(f"📤 Iniciando upload: {file_name}")
+        
         # Ler o arquivo de imagem
         with open(image_path, "rb") as f:
             file_data = f.read()
+        
+        print(f"📊 Tamanho do arquivo: {len(file_data)} bytes")
         
         # Upload para o bucket "fotos"
         response = supabase.storage.from_("fotos").upload(
@@ -80,20 +84,25 @@ def upload_image_to_supabase(image_path: str, file_name: str) -> str:
             file=file_data,
             file_options={
                 "content-type": "image/png",
-                "upsert": "true"  # Sobrescrever se já existir
+                "upsert": True  # Sobrescrever se já existir
             }
         )
         
-        if response.error:
+        print(f"📋 Resposta do upload: {response}")
+        
+        if hasattr(response, 'error') and response.error:
             raise Exception(f"Erro no upload: {response.error}")
         
         # Obter URL pública
         public_url = supabase.storage.from_("fotos").get_public_url(file_name)
+        print(f"🔗 URL gerada: {public_url}")
         
         return public_url
     
     except Exception as e:
-        print(f"Erro ao fazer upload para Supabase: {str(e)}")
+        print(f"❌ Erro detalhado no upload para Supabase: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise e
 
 def find_image_by_name(image_name: str) -> pathlib.Path:
@@ -206,12 +215,13 @@ async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
                         public_url = supabase.storage.from_("fotos").get_public_url(supabase_path)
                         
                         # Verificar se realmente existe fazendo uma requisição HEAD
-                        test_response = requests.head(public_url)
+                        test_response = requests.head(public_url, timeout=5)
                         if test_response.status_code == 200:
                             urls.append(public_url)
                             print(f"⚡ {bg_original_name} já existe, reutilizando: {public_url}")
                             continue
-                    except:
+                    except Exception as check_error:
+                        print(f"🔍 Arquivo {bg_original_name} não existe, será gerado: {str(check_error)}")
                         pass  # Arquivo não existe, continuar com geração
                     
                     # Gerar nova imagem se não existir
@@ -228,9 +238,7 @@ async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
                             image=images,
                             prompt=prompt,
                             size=request.size,
-                            output_format="png",
-                            quality=request.quality,
-                            background="auto",
+                            response_format="url"
                         )
                         
                         choice = result.data[0]
@@ -255,7 +263,9 @@ async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
                         print(f"✅ {bg_original_name} gerado: {public_url}")
                         
                 except Exception as e:
-                    print(f"❌ Erro ao processar background {bg_path.name}: {str(e)}")
+                    print(f"❌ Erro detalhado ao processar {bg_path.name}: {type(e).__name__}: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
                     continue
             
             if not urls:
