@@ -231,15 +231,12 @@ async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
                     images = [open(bg_path, "rb"), open(team_logo_path, "rb")]
                     
                     try:
-                        # Usar cliente OpenAI exatamente igual ao seu exemplo
+                        # Usar cliente OpenAI com parâmetros básicos primeiro
                         result = client.images.edit(
                             model="openai/gpt-image-1",
                             image=images,
                             prompt="Quero esse fundo com a mesma forma e estilo porem com as cores desse escudo do escudo.png, coloque o logo com opacidade 50% para parecer integrado ao fundo",
-                            size="1024x1536",
-                            output_format="png",
-                            quality="medium",
-                            background="auto",
+                            size="1024x1536"
                         )
 
                         choice = result.data[0]
