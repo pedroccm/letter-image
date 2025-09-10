@@ -196,6 +196,9 @@ async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
             
             for i, bg_path in enumerate(selected_bgs):
                 try:
+                    # Extrair nome original do background (ex: bg1, bg15, bg23)
+                    bg_original_name = bg_path.stem  # Nome sem extensão
+                    
                     # Abre as imagens para a API (fundo + escudo)
                     with open(bg_path, "rb") as bg_file, open(team_logo_path, "rb") as logo_file:
                         images = [bg_file, logo_file]
@@ -215,7 +218,7 @@ async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
                         choice = result.data[0]
                         
                         # Salva a imagem temporariamente
-                        output_filename = f"{request.team_name}_bg_{i+1}.png"
+                        output_filename = f"{bg_original_name}.png"
                         output_path = os.path.join(temp_dir, output_filename)
                         
                         if getattr(choice, "url", None):
@@ -227,15 +230,15 @@ async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
                         else:
                             raise HTTPException(status_code=500, detail="Resposta inesperada da API")
                         
-                        # Upload para Supabase e obter URL
-                        supabase_filename = f"{request.team_name}_bg_{i+1}_{timestamp}.png"
-                        public_url = upload_image_to_supabase(output_path, supabase_filename)
+                        # Upload para Supabase com estrutura de pastas: team_name/bg_name.png
+                        supabase_path = f"{request.team_name}/{bg_original_name}.png"
+                        public_url = upload_image_to_supabase(output_path, supabase_path)
                         
                         urls.append(public_url)
-                        print(f"✅ Imagem {i+1} processada: {public_url}")
+                        print(f"✅ {bg_original_name} processado: {public_url}")
                         
                 except Exception as e:
-                    print(f"❌ Erro ao processar background {i+1}: {str(e)}")
+                    print(f"❌ Erro ao processar background {bg_path.name}: {str(e)}")
                     continue
             
             if not urls:
