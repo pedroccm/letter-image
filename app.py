@@ -11,7 +11,9 @@ import requests
 import tempfile
 import random
 import zipfile
+import time
 from openai import OpenAI
+from supabase import create_client, Client
 
 app = FastAPI(title="Text to Image API", description="API para converter texto em imagem")
 
@@ -26,6 +28,13 @@ app.add_middleware(
 IMAGES_DIR = pathlib.Path("stored_images")
 BGS_DIR = pathlib.Path("bgs")
 API_KEY = os.getenv("AIML_API_KEY", "a2c4457ed6a14299a425dd670e5a8ad0")
+
+# Configuração do Supabase
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://iynirubuonhsnxzzmrry.supabase.co")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bmlydWJ1b25oc254enptcnJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3NjY2MjEsImV4cCI6MjA3MjM0MjYyMX0.Xz2OnUsd9R5qNFYO4apKNQe61dyWbBxEk7CeRBNy818")
+
+# Cliente Supabase
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 class TextRequest(BaseModel):
     text: str
@@ -48,6 +57,44 @@ def save_from_url(url: str, out_path: pathlib.Path):
         for chunk in r.iter_content(8192):
             if chunk:
                 f.write(chunk)
+
+def upload_image_to_supabase(image_path: str, file_name: str) -> str:
+    """
+    Faz upload de uma imagem para o Supabase Storage e retorna a URL pública.
+    
+    Args:
+        image_path: Caminho para o arquivo de imagem
+        file_name: Nome do arquivo no Supabase
+    
+    Returns:
+        URL pública da imagem
+    """
+    try:
+        # Ler o arquivo de imagem
+        with open(image_path, "rb") as f:
+            file_data = f.read()
+        
+        # Upload para o bucket "fotos"
+        response = supabase.storage.from_("fotos").upload(
+            path=file_name,
+            file=file_data,
+            file_options={
+                "content-type": "image/png",
+                "upsert": "true"  # Sobrescrever se já existir
+            }
+        )
+        
+        if response.error:
+            raise Exception(f"Erro no upload: {response.error}")
+        
+        # Obter URL pública
+        public_url = supabase.storage.from_("fotos").get_public_url(file_name)
+        
+        return public_url
+    
+    except Exception as e:
+        print(f"Erro ao fazer upload para Supabase: {str(e)}")
+        raise e
 
 def find_image_by_name(image_name: str) -> pathlib.Path:
     """
@@ -120,7 +167,7 @@ async def render_text(
 @app.post("/generate-team-backgrounds")
 async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
     """
-    Gera 5 imagens de fundo personalizadas para um time usando IA.
+    Gera 5 imagens de fundo personalizadas para um time usando IA e retorna URLs do Supabase.
     """
     
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -144,7 +191,8 @@ async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
                 base_url="https://api.aimlapi.com/v1",
             )
             
-            generated_files = []
+            urls = []
+            timestamp = int(time.time())
             
             for i, bg_path in enumerate(selected_bgs):
                 try:
@@ -166,7 +214,7 @@ async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
                         
                         choice = result.data[0]
                         
-                        # Salva a imagem resultante
+                        # Salva a imagem temporariamente
                         output_filename = f"{request.team_name}_bg_{i+1}.png"
                         output_path = os.path.join(temp_dir, output_filename)
                         
@@ -179,27 +227,27 @@ async def generate_team_backgrounds(request: GenerateTeamBackgroundsRequest):
                         else:
                             raise HTTPException(status_code=500, detail="Resposta inesperada da API")
                         
-                        generated_files.append(output_path)
+                        # Upload para Supabase e obter URL
+                        supabase_filename = f"{request.team_name}_bg_{i+1}_{timestamp}.png"
+                        public_url = upload_image_to_supabase(output_path, supabase_filename)
+                        
+                        urls.append(public_url)
+                        print(f"✅ Imagem {i+1} processada: {public_url}")
                         
                 except Exception as e:
-                    print(f"Erro ao processar background {i+1}: {str(e)}")
+                    print(f"❌ Erro ao processar background {i+1}: {str(e)}")
                     continue
             
-            if not generated_files:
+            if not urls:
                 raise HTTPException(status_code=500, detail="Nenhuma imagem foi gerada com sucesso")
             
-            # Criar ZIP com todas as imagens
-            zip_path = os.path.join(temp_dir, f"{request.team_name}_backgrounds.zip")
-            with zipfile.ZipFile(zip_path, 'w') as zip_file:
-                for file_path in generated_files:
-                    if os.path.exists(file_path):
-                        zip_file.write(file_path, os.path.basename(file_path))
-            
-            return FileResponse(
-                zip_path,
-                media_type="application/zip",
-                filename=f"{request.team_name}_backgrounds.zip"
-            )
+            # Retornar URLs das imagens
+            return {
+                "success": True,
+                "team_name": request.team_name,
+                "count": len(urls),
+                "urls": urls
+            }
                     
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Erro ao processar imagens: {str(e)}")
