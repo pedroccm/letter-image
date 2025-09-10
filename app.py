@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query, Form
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, FileResponse
 from pydantic import BaseModel
@@ -31,6 +31,13 @@ class TextRequest(BaseModel):
     font_size: int = 32
     text_color: str = "#000000"
     background_color: str = "#FFFFFF"
+
+class CombineImagesRequest(BaseModel):
+    image1_name: str
+    image2_name: str
+    prompt: str
+    size: str = "1024x1536"
+    quality: str = "medium"
 
 def save_from_url(url: str, out_path: pathlib.Path):
     r = requests.get(url, stream=True)
@@ -110,13 +117,7 @@ async def render_text(
         raise HTTPException(status_code=500, detail=f"Erro ao gerar imagem: {str(e)}")
 
 @app.post("/combine-images")
-async def combine_images(
-    image1_name: str = Form(..., description="Nome da primeira imagem armazenada"),
-    image2_name: str = Form(..., description="Nome da segunda imagem armazenada"), 
-    prompt: str = Form(..., description="Prompt para combinar as imagens"),
-    size: str = Form("1024x1536", description="Tamanho da imagem resultante"),
-    quality: str = Form("medium", description="Qualidade da imagem")
-):
+async def combine_images(request: CombineImagesRequest):
     """
     Combina duas imagens armazenadas no servidor usando AI baseado no prompt fornecido.
     """
@@ -124,8 +125,8 @@ async def combine_images(
     with tempfile.TemporaryDirectory() as temp_dir:
         try:
             # Encontra as imagens (com ou sem extensão)
-            image1_path = find_image_by_name(image1_name)
-            image2_path = find_image_by_name(image2_name)
+            image1_path = find_image_by_name(request.image1_name)
+            image2_path = find_image_by_name(request.image2_name)
             
             # Abre as imagens para a API
             images = [open(image1_path, "rb"), open(image2_path, "rb")]
@@ -140,10 +141,10 @@ async def combine_images(
                 result = client.images.edit(
                     model="openai/gpt-image-1",
                     image=images,
-                    prompt=prompt,
-                    size=size,
+                    prompt=request.prompt,
+                    size=request.size,
                     output_format="png",
-                    quality=quality,
+                    quality=request.quality,
                     background="auto",
                 )
                 
