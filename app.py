@@ -22,7 +22,7 @@ app.add_middleware(
 
 # Configuração para combinação de imagens
 IMAGES_DIR = pathlib.Path("stored_images")
-API_KEY = "a2c4457ed6a14299a425dd670e5a8ad0"
+API_KEY = os.getenv("AIML_API_KEY", "a2c4457ed6a14299a425dd670e5a8ad0")
 
 class TextRequest(BaseModel):
     text: str
