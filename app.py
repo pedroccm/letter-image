@@ -24,12 +24,6 @@ app.add_middleware(
 IMAGES_DIR = pathlib.Path("stored_images")
 API_KEY = "a2c4457ed6a14299a425dd670e5a8ad0"
 
-# Cliente OpenAI apontando para o endpoint da AIML
-client = OpenAI(
-    api_key=API_KEY,
-    base_url="https://api.aimlapi.com/v1",
-)
-
 class TextRequest(BaseModel):
     text: str
     width: int = 400
@@ -137,6 +131,12 @@ async def combine_images(
             images = [open(image1_path, "rb"), open(image2_path, "rb")]
             
             try:
+                # Inicializar cliente apenas quando necessário
+                client = OpenAI(
+                    api_key=API_KEY,
+                    base_url="https://api.aimlapi.com/v1",
+                )
+                
                 result = client.images.edit(
                     model="openai/gpt-image-1",
                     image=images,
